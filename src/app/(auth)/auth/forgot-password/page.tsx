@@ -10,9 +10,17 @@ import { PostRequest } from "~/utils/request";
 import Loading from "~/components/ui/loading";
 import { showSuccess } from "~/components/toast/sonner";
 
+// Shown for every syntactically valid address, whether or not it belongs to an
+// account, so the page never reveals which emails are registered.
+const CONFIRMATION_MESSAGE =
+  "If an account exists for that email, we have sent instructions to reset your password.";
+const REQUEST_FAILED_MESSAGE =
+  "We could not send reset instructions just now. Please check your connection and try again.";
+
 function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [errors, setErrors] = useState({ email: "" });
+  const [submitError, setSubmitError] = useState("");
   const router = useRouter();
   const [buttonloading, setButtonloading] = useState(false);
 
@@ -31,24 +39,38 @@ function ForgotPassword() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (validateForm()) {
-      setButtonloading(true);
-
-      const res = await PostRequest("/auth/password-reset", { email });
-
-      if (res?.status === 200 || res?.status === 201) {
-        showSuccess(res?.data.message);
-        router.push(`/auth/reset-password?email=${encodeURIComponent(email)}`);
-      } else {
-        setButtonloading(false);
-      }
+    if (!validateForm()) {
+      return;
     }
+
+    setSubmitError("");
+    setButtonloading(true);
+
+    const res = await PostRequest("/auth/password-reset", { email });
+
+    // PostRequest resolves with the axios error on failure, so the status can
+    // sit on either shape. A 404 is the API's unknown-address branch, and is
+    // treated as a success here so a registered and an unregistered address
+    // reach the same screen with the same copy.
+    const status = res?.status ?? res?.response?.status;
+
+    if (status === 200 || status === 201 || status === 404) {
+      showSuccess(CONFIRMATION_MESSAGE);
+      router.push(`/auth/reset-password?email=${encodeURIComponent(email)}`);
+      return;
+    }
+
+    setSubmitError(REQUEST_FAILED_MESSAGE);
+    setButtonloading(false);
   };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEmail(e.target.value);
     if (errors.email) {
       setErrors((prevErrors) => ({ ...prevErrors, email: "" }));
+    }
+    if (submitError) {
+      setSubmitError("");
     }
   };
 
@@ -105,6 +127,14 @@ function ForgotPassword() {
                 </div>
               </div>
             </div>
+            {submitError && (
+              <p
+                role="alert"
+                className="mb-[16px] text-[14px] text-[#F81404] leading-[21px]"
+              >
+                {submitError}
+              </p>
+            )}
             <div className="flex flex-col gap-[24px]">
               <div className="flex flex-col gap-[16px]">
                 <Button
